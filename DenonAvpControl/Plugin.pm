@@ -2412,6 +2412,24 @@ sub commandCallback {
 				my $char1 = substr($volAdjust,0,1);
 				my $getVolFromPlayer = 0;
 
+				# Rate-limit absolute volume changes (e.g. from Squeezebox Touch IR remote).
+				# Touch sends rapid absolute values with acceleration, unlike Classic which
+				# sends incremental +/- values. Without this, volume maxes out in ~1-2 seconds.
+				if (($char1 ne '-') && ($char1 ne '+')) {
+					my $zone = $curAvrZone{$client};
+					my $maxStep = 5;  # max SB volume change per command
+					if (defined $curVolume{$client,$zone} && $curVolume{$client,$zone} >= 0) {
+						my $currentSBVol = calculateSBVolume($client, $curVolume{$client,$zone});
+						my $delta = $volAdjust - $currentSBVol;
+						if (abs($delta) > $maxStep) {
+							my $clampedVol = $currentSBVol + ($maxStep * ($delta > 0 ? 1 : -1));
+							$log->debug("*** DenonAvpControl:clamping absolute vol from $volAdjust to $clampedVol (current SB: $currentSBVol)\n");
+							$volAdjust = $clampedVol;
+							handleVolSet($client, $volAdjust, 1);  # sync player volume to clamped value
+						}
+					}
+				}
+
 				#if it's an incremental adjustment, get the new volume from the client
 				if (($char1 eq '-') || ($char1 eq '+')) {
 					my $zone = $curAvrZone{$client};
