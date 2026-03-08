@@ -1,6 +1,9 @@
 # denonavpcontrol
 > A plugin for the Lyrion Music Server to control a Denon or Marantz Audio/Video Receiver.
 
+# This is an attempt with help of Claude Code to add volume Control via Ir-Remote, and Display controls to not max out the Volume on one Button Press.
+It's not working yet, but I'll try ;-)
+- Miisamm
 ---
 
 ## Introduction
