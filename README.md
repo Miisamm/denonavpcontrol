@@ -2,9 +2,10 @@
 > A plugin for the Lyrion Music Server to control a Denon or Marantz Audio/Video Receiver.
 
 # This is an attempt with help of Claude Code to add volume Control via Ir-Remote, and Display controls to not max out the volume on buttonpress for the Squeezebox Touch.
-It's not working yet perfectly, but I'll try ;-), for now it takes the volume up down commands when st to -20dB (60%) it only goes to 39.5 on my 70s
-Inconsitencies upon holding volume up down buttons, jumps sometimes. In the next days I will continue to work out the little problems. For my understanding
-it makes calculations readbacks marantz to sb to keep it under control. I´m no Programmer, sorry for Vibecoding this, but when it works I´ll be happy and hope making some other SB Touch users Happy ;-).
+It's not working yet perfectly, but I'll try ;-), for now it takes the volume up down commands. Little Bug:when set to -20dB (60%) it only goes to 39.5 on my 70s
+Inconsitencies upon holding volume up down buttons, jumps sometimes. 
+
+In the next days I will continue to work out the little problems. For my understanding it makes calculations and readbacks marantz to sb to keep it under control. I´m no Programmer, sorry for Vibecoding this, but when it works I´ll be happy and hope making some other SB Touch users Happy ;-).
 - Miisamm
 ---
 
