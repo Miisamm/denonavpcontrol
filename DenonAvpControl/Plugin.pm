@@ -262,6 +262,7 @@ my %gMenuPopulated;	# Used to indicate whether the menu should be re-populated
 my %gRefreshCVTable;# Used to indicate if the channel volume table should be refreshed
 my %gLastVolChange; # Time of the last AVR volume change
 my %gDelayedVolChanges; # Number of consecutive delayed vol changes
+my %gLastAbsVol;        # Last accepted absolute volume per client (for rate-limiting Touch/iPeng)
 
 # ----------------------------------------------------------------------------
 # References to other classes
@@ -2416,18 +2417,19 @@ sub commandCallback {
 				# Touch sends rapid absolute values with acceleration, unlike Classic which
 				# sends incremental +/- values. Without this, volume maxes out in ~1-2 seconds.
 				if (($char1 ne '-') && ($char1 ne '+')) {
-					my $zone = $curAvrZone{$client};
-					my $maxStep = 5;  # max SB volume change per command
-					if (defined $curVolume{$client,$zone} && $curVolume{$client,$zone} >= 0) {
-						my $currentSBVol = calculateSBVolume($client, $curVolume{$client,$zone});
-						my $delta = $volAdjust - $currentSBVol;
+					my $maxStep = 3;  # max SB volume change per command
+					my $timeSinceLast = Time::HiRes::time() - ($gLastVolChange{$client} || 0);
+
+					if (defined $gLastAbsVol{$client} && $timeSinceLast < 2) {
+						my $delta = $volAdjust - $gLastAbsVol{$client};
 						if (abs($delta) > $maxStep) {
-							my $clampedVol = $currentSBVol + ($maxStep * ($delta > 0 ? 1 : -1));
-							$log->debug("*** DenonAvpControl:clamping absolute vol from $volAdjust to $clampedVol (current SB: $currentSBVol)\n");
+							my $clampedVol = $gLastAbsVol{$client} + ($maxStep * ($delta > 0 ? 1 : -1));
+							$log->debug("*** DenonAvpControl:clamping absolute vol from $volAdjust to $clampedVol (prev: $gLastAbsVol{$client})\n");
 							$volAdjust = $clampedVol;
 							handleVolSet($client, $volAdjust, 1);  # sync player volume to clamped value
 						}
 					}
+					$gLastAbsVol{$client} = $volAdjust;
 				}
 
 				#if it's an incremental adjustment, get the new volume from the client
