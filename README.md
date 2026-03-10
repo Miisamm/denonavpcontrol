@@ -5,10 +5,11 @@
 It's not working yet perfectly, but I'll try ;-), for now it takes the volume up down commands. 
 
 Bugs: 
-- When set to -20dB (60%) it only goes to 39.5 on my 70s
-- Inconsitencies upon holding volume up down buttons, jumps sometimes, probably some timing issues. 
+- None found at the moment, Sb Touch works as intended with My Marantz 70s, I will test with my SB3 and Radio just to be shure I & Claude Code didn´t break anything. 
 
-In the next days I will continue to work out the little problems. For my understanding it makes calculations and readbacks marantz to sb to keep it under control. I´m no Programmer, sorry for Vibecoding this, but when it works I´ll be happy and hope making some other SB Touch users Happy ;-).
+It Ignores the curve of the touch, and sends 0.5db changes directly to the marantz, it even ramps up the speed to the marantz without overwhelming the rate, it´s rate limited to 200ms, just sends bigger steps upon holding volume up or down. I´m no Programmer, sorry for Vibecoding this, but when it works I´ll be happy and hope making some other SB Touch users Happy ;-).
+Big Thanks to @SamInPgh https://github.com/SamInPgh/denonavpcontrol
+
 - Miisamm
 ---
 
