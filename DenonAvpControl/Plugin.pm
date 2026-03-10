@@ -263,6 +263,7 @@ my %gRefreshCVTable;# Used to indicate if the channel volume table should be ref
 my %gLastVolChange; # Time of the last AVR volume change
 my %gDelayedVolChanges; # Number of consecutive delayed vol changes
 my %gLastAbsVol;        # Last accepted absolute volume per client (for rate-limiting Touch/iPeng)
+my %gLastAbsCmdTime;    # Time of last absolute volume command received (for rate-limiting)
 
 # ----------------------------------------------------------------------------
 # References to other classes
@@ -365,7 +366,7 @@ sub newPlayerCheck {
 
 	# Do nothing if client is not a Receiver or Squeezebox
 	if( !(($client->isa( "Slim::Player::Receiver")) || ($client->isa( "Slim::Player::Squeezebox2")))) {
-		$log->debug( "Not a receiver or a squeezebox\n");
+		$log->error("*** DenonAvpControl:TRACE " . $client->name() . " rejected: not Receiver or Squeezebox2 (class=" . ref($client) . ")\n");
 		#now clear callback for those clients that are not part of the plugin
 		clearCallback();
 		return;
@@ -377,16 +378,17 @@ sub newPlayerCheck {
 
 	# Do nothing if plugin is disabled for this client
 	if ( !defined( $pluginEnabled) || $pluginEnabled == 0) {
-		$log->debug( "Plugin Not Enabled for: ".$client->name()."\n");
+		$log->error("*** DenonAvpControl:TRACE Plugin Not Enabled for: " . $client->name() . "\n");
 		#now clear callback for those clients that are not part of the plugin
 		clearCallback();
 		return;
 	} elsif (!length($cprefs->get('avpAddress')) ) {
-		$log->debug( "No IP Address specified for: ".$client->name()."\n");
+		$log->error("*** DenonAvpControl:TRACE No IP Address for: " . $client->name() . "\n");
 		#now clear callback for those clients that are not part of the plugin
 		clearCallback();
 		return;
 	}
+	$log->error("*** DenonAvpControl:TRACE Player " . $client->name() . " PASSED checks (class=" . ref($client) . " enabled=" . ($pluginEnabled//0) . " addr=" . $cprefs->get('avpAddress') . ")\n");
 
 	if ($request->isCommand([['client'], ['reconnect']])) {
 		$log->debug( "Player " . $client->name() . " is reconnecting\n");
@@ -2274,7 +2276,9 @@ sub commandCallback {
 	$log->debug( "commandCallback() Player: " . $client->name() . "\n");
 
 	if (!$gClientReg{$client->id} ) {   # Ignore if this is an unregistered player (possibly synced)
-		$log->debug( "commandCallback() Unregistered player - bypassing \n");
+		if ( $request->isCommand([['mixer'], ['volume']]) ) {
+			$log->error("*** DenonAvpControl:TRACE UNREGISTERED player " . $client->name() . " (" . $client->id . ") sent mixer volume: " . $request->getParam('_newvalue') . "\n");
+		}
 		return;
 	}
 
@@ -2395,42 +2399,98 @@ sub commandCallback {
 			}
 		}
 	# Get clients volume adjustment
-	} elsif ( $request->isCommand([['mixer'], ['volume']]) && $outputLevelFixed{$client} ) {
+	} elsif ( $request->isCommand([['mixer'], ['volume']]) ) {
+		$log->error("*** DenonAvpControl:TRACE mixer vol for " . $client->name() . " outputLevelFixed=" . ($outputLevelFixed{$client} ? '1' : '0') . " val='" . $request->getParam('_newvalue') . "'\n");
+	  if ( $outputLevelFixed{$client} ) {
 		if ( !$iPowerOnInProgress{$client} ) {
 			my $volAdjust = $request->getParam('_newvalue');
-			
+			$log->error("*** DenonAvpControl:TRACE vol command received: '$volAdjust' for " . $client->name() . "\n");
+
+			# Fixed-output Touch/SqueezePlay: volume is pinned at 100, sends 99/101 for down/up.
+			# Step AVR volume directly in 0.5dB increments, bypassing the sqrt curve.
+			if ( $outputLevelFixed{$client} && $volAdjust != 100 ) {
+				my $zone = $curAvrZone{$client};
+				if ( $curAvrSource{$client} ne "" ) {
+					my $direction = ($volAdjust > 100) ? 1 : -1;
+
+					# Throttle: max 5 commands/sec to the Marantz (200ms minimum gap).
+					my $elapsed = Time::HiRes::time() - ($gLastVolChange{$client} || 0);
+					if ($elapsed < 0.2) {
+						handleVolSet($client, 100, 1);
+						return;
+					}
+
+					my $cprefs_local = $prefs->client($client);
+					my $maxVol = $cprefs_local->get('maxVol');
+					my $avrType = $cprefs_local->get('pref_Avp');
+
+					# Use Touch IR acceleration as step multiplier:
+					# val=99/101 → 1×0.5dB, val=98/102 → 2×0.5dB, etc.
+					my $accel = abs($volAdjust - 100);
+					$accel = 1 if $accel < 1;
+					$accel = 16 if $accel > 16;  # cap at 8dB per step
+
+					# Normalize curVolume to tenths-of-dB:
+					#   2-digit "06" (6.0dB) → 60,  "60" (60.0dB) → 600
+					#   3-digit "085" (8.5dB) → 85,  "595" (59.5dB) → 595
+					my $curRaw = $curVolume{$client,$zone};
+					my $curTenthDb;
+					if (length($curRaw) >= 3) {
+						$curTenthDb = int($curRaw);
+					} else {
+						$curTenthDb = int($curRaw) * 10;
+					}
+
+					# Step: 0.5dB base (5 tenths) × acceleration
+					my $baseStep = ($zone == 0 && $avrType != 3) ? 5 : 10;
+					my $newTenthDb = $curTenthDb + ($baseStep * $accel * $direction);
+
+					# Snap to nearest valid 0.5dB boundary (multiple of 5).
+					# Handles off-grid curVolume from Marantz feedback or init.
+					if ($direction > 0) {
+						$newTenthDb = int(($newTenthDb + 4) / 5) * 5;  # round up
+					} else {
+						$newTenthDb = int($newTenthDb / 5) * 5;  # round down
+					}
+
+					# Clamp to 0 .. maxVol (in tenths-of-dB)
+					my $maxTenthDb = (80 + $maxVol) * 10;
+					$newTenthDb = 0 if $newTenthDb < 0;
+					$newTenthDb = $maxTenthDb if $newTenthDb > $maxTenthDb;
+
+					# Convert back to Denon protocol format
+					my $newDenonVol;
+					if ($zone == 0 && $avrType != 3 && ($newTenthDb % 10) != 0) {
+						$newDenonVol = sprintf("%03d", $newTenthDb);   # half-dB: "085"
+					} else {
+						$newDenonVol = sprintf("%02d", $newTenthDb / 10);  # whole dB: "06"
+					}
+
+					if ($newTenthDb != $curTenthDb) {
+						$log->error("*** DenonAvpControl:Touch incremental: dir=$direction accel=$accel curDenon=$curRaw newDenon=$newDenonVol tenthDb=$curTenthDb>$newTenthDb\n");
+						$curVolume{$client,$zone} = $newDenonVol;
+						Plugins::DenonAvpControl::DenonAvpComms::SendNetAvpVol($client, $gIPAddress{$client}, $newDenonVol, $zone);
+						$gLastVolChange{$client} = Time::HiRes::time();
+					}
+				}
+				# Reset player volume back to 100 to keep it centered
+				handleVolSet($client, 100, 1);
+				return;
+			}
+
 			# special case to catch player firmware bug that sets vol to 100 when output level is fixed
 			if ( $volAdjust == 100) {
-				$log->debug("*** DenonAvpControl:Volume set to 100% for " . $client->name() . " : changing to initial value\n");
+				$log->error("*** DenonAvpControl:Volume set to 100% for " . $client->name() . " : changing to initial value\n");
 				my $sbVolume = calculateSBVolume($client, $iInitialAvpVol{$client});
 				handleVolSet( $client, $sbVolume, 1);  # set volume level to initial value
 				return;
 			}
 
 			if ( $curAvrSource{$client} ne "") {
-				$log->debug("*** DenonAvpControl:new SB vol: $volAdjust  \n");
+				$log->error("*** DenonAvpControl:new SB vol: $volAdjust (char1='" . substr($volAdjust,0,1) . "')\n");
 
 				my $char1 = substr($volAdjust,0,1);
 				my $getVolFromPlayer = 0;
-
-				# Rate-limit absolute volume changes (e.g. from Squeezebox Touch IR remote).
-				# Touch sends rapid absolute values with acceleration, unlike Classic which
-				# sends incremental +/- values. Without this, volume maxes out in ~1-2 seconds.
-				if (($char1 ne '-') && ($char1 ne '+')) {
-					my $maxStep = 3;  # max SB volume change per command
-					my $timeSinceLast = Time::HiRes::time() - ($gLastVolChange{$client} || 0);
-
-					if (defined $gLastAbsVol{$client} && $timeSinceLast < 2) {
-						my $delta = $volAdjust - $gLastAbsVol{$client};
-						if (abs($delta) > $maxStep) {
-							my $clampedVol = $gLastAbsVol{$client} + ($maxStep * ($delta > 0 ? 1 : -1));
-							$log->debug("*** DenonAvpControl:clamping absolute vol from $volAdjust to $clampedVol (prev: $gLastAbsVol{$client})\n");
-							$volAdjust = $clampedVol;
-							handleVolSet($client, $volAdjust, 1);  # sync player volume to clamped value
-						}
-					}
-					$gLastAbsVol{$client} = $volAdjust;
-				}
 
 				#if it's an incremental adjustment, get the new volume from the client
 				if (($char1 eq '-') || ($char1 eq '+')) {
@@ -2460,6 +2520,7 @@ sub commandCallback {
 				Slim::Utils::Timers::setTimer( $client, (Time::HiRes::time() + $iDelay ), \&handleVolChanges, $volAdjust, $getVolFromPlayer);
 			}
 		}
+	  }
 	} elsif ( $request->isCommand([['mixer'], ['muting']]) && $outputLevelFixed{$client}) {
 		if ( !$iPowerOnInProgress{$client} && $curAvrSource{$client} ne "") {
 			$log->debug("Muting toggle request: \n");
@@ -2582,7 +2643,7 @@ sub handleVolChanges {
 	$log->debug("VolChange: $DenonVol \n");
 
 	if ($DenonVol != $curVolume{$client,$zone} ) {  # only send volume changes
-		$curVolume{$client,$zone} = int($DenonVol);
+		$curVolume{$client,$zone} = $DenonVol;  # preserve string format (e.g. "085")
 		Plugins::DenonAvpControl::DenonAvpComms::SendNetAvpVol($client, $avpIPAddress, $DenonVol, $zone);
 		$gLastVolChange{$client} = Time::HiRes::time();  # update time of last volume change
 		$gDelayedVolChanges{$client} = 0;   #reset the delayed volume change counter
