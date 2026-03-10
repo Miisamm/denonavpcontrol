@@ -2432,6 +2432,7 @@ sub commandCallback {
 					#   2-digit "06" (6.0dB) → 60,  "60" (60.0dB) → 600
 					#   3-digit "085" (8.5dB) → 85,  "595" (59.5dB) → 595
 					my $curRaw = $curVolume{$client,$zone};
+					$curRaw =~ s/[^0-9]//g;  # strip non-digits (trailing \r from Marantz response)
 					my $curTenthDb;
 					if (length($curRaw) >= 3) {
 						$curTenthDb = int($curRaw);
@@ -3074,7 +3075,12 @@ sub updateSqueezeVol { #used to sync SB vol with AVP
 			my $volAdjust = calculateSBVolume($client, $avpVol);
 
 			if ($zone == $prefZone) {  # only if the primary zone
-				handleVolSet( $client, $volAdjust, 1);  # set client volume
+				# Skip handleVolSet for fixed-output players (e.g. Touch) —
+				# changing the player volume from 100 breaks the Touch volume
+				# stepping patch, which relies on volume being pinned at 100.
+				if ( !$outputLevelFixed{$client} ) {
+					handleVolSet( $client, $volAdjust, 1);  # set client volume
+				}
 			}
 		}
 	}
