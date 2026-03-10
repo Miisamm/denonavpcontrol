@@ -91,6 +91,19 @@ Complete rewrite of the stepping logic. Instead of converting through the sqrt c
 - Fixes v5.3-pre crash where off-grid `curVolume` (from Marantz feedback or previous invalid sends) produced invalid Denon protocol values like `"047"`, `"052"`
 - Combined with 200ms throttle: max 5 commands/sec, each carrying acceleration-appropriate step size
 
+#### v5.4: + volume poll sync fix + trailing CR fix
+
+Two bugs fixed that caused volume jumps when the Marantz volume was changed externally (knob, other remote) or on startup:
+
+**Bug 1 — Volume poll fighting with Touch volume pin:**
+- The volume poll (`handleVolumeRequest` → `updateSqueezeVol`) was calling `handleVolSet()` to sync the Touch's server-side volume to match the Marantz. This changed the Touch from its pinned 100 to an SB equivalent (e.g., 44), so the next IR press sent values far from 100 (e.g., 43/45). The patch interpreted `abs(45 - 100) = 55` as max acceleration going the wrong direction → massive volume jump.
+- **Fix**: In `updateSqueezeVol`, skip `handleVolSet` for fixed-output players. The poll still updates `curVolume` (so the patch knows the real Marantz volume), but the Touch stays pinned at 100.
+
+**Bug 2 — Trailing `\r` in Denon volume values:**
+- `DenonAvpComms.pm` line 1355: `substr($buf,2,3)` extracts 3 chars from the Marantz response. For 2-digit volumes like `"MV59\r"`, this gives `"59\r"` (trailing carriage return). For 3-digit like `"MV075\r"`, it correctly gives `"075"` (the `\r` is at position 5, not included).
+- The trailing `\r` made `length("59\r") = 3`, causing the patch to take the 3-digit path: `int("59") = 59` → treated as 5.9dB instead of 59.0dB → volume jumped from 59.0 to 6.5dB on next step.
+- **Fix**: Strip non-digit characters from `curVolume` before the length check: `$curRaw =~ s/[^0-9]//g;`
+
 ## Code Location
 
 Patch is in `commandCallback()` in `Plugin.pm`, inserted before the `volAdjust == 100` firmware bug guard. The patch:
@@ -117,6 +130,8 @@ Plugin.pm.bak   # original unpatched
 Plugin.pm.v42   # v4.2 (last sqrt-based version)
 Plugin.pm.v51   # v5.1 (direct stepping, no throttle)
 Plugin.pm.v52   # v5.2 (+ throttle)
+Plugin.pm.v53   # v5.3 (+ acceleration + grid snap)
+Plugin.pm.v54   # v5.4 (+ poll sync fix + trailing CR fix)
 ```
 
 ## Fork
