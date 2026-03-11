@@ -1,19 +1,40 @@
 # denonavpcontrol
 > A plugin for the Lyrion Music Server to control a Denon or Marantz Audio/Video Receiver.
 
-# This is an attempt with help of Claude Code to add volume Control via Ir-Remote, and Display controls to not max out the volume on buttonpress for the Squeezebox Touch.
-It's not working yet perfectly, but I'll try ;-), for now it takes the volume up down commands. 
+# Squeezebox Touch Volume Fix (Fork)
 
-Bugs: 
-- None found at the moment, Sb Touch works as intended with My Marantz 70s, I will test with my SB3 and Radio just to be sure Claude Code & I didn´t break anything. 
+This fork fixes the Squeezebox Touch IR remote volume control maxing out Denon/Marantz receivers. With fixed output level enabled (required for this plugin), the Touch sends absolute volume values near 100, which the plugin's sqrt curve maps to near-max receiver volume. This fix bypasses the curve and sends direct 0.5dB steps to the AVR instead.
 
-It Ignores the curve of the touch, and sends 0.5db changes directly to the marantz, it even ramps up the speed to the marantz without overwhelming the rate, it´s rate limited to 200ms, just sends bigger steps upon holding volume up or down. I´m no Programmer, sorry for Vibecoding this, but when it works I´ll be happy and hope making some other SB Touch users Happy ;-).
+Tested with Marantz Cinema 70s, Squeezebox Touch, and SB3 Classic. SB3 and other players are unaffected by this patch.
 
-Big Thanks to @SamInPgh 
+Big Thanks to @SamInPgh for the original plugin!
 
 https://github.com/SamInPgh/denonavpcontrol
 
 - Miisamm
+
+## Changelog
+
+### v5.5
+- **Web UI slider fix**: Slider clicks no longer drop volume — only Touch IR range (84-116) is intercepted, other values fall through to the original sqrt curve handler
+- **Web UI +/- buttons fix**: Incremental volume commands now step 0.5dB like IR instead of hitting the sqrt curve at near-100 values
+- **Slider reflects actual Denon volume**: LMS web UI slider shows the real receiver volume instead of being stuck at 100%
+- **Poll sync for fixed-output players**: Volume polling now updates the slider for fixed-output players too, syncing with Marantz knob/remote changes
+
+### v5.4
+- **Poll sync**: Volume polling updates internal state for Marantz knob/remote sync
+- **Trailing CR fix**: Strip `\r` from Denon volume responses before parsing — fixes wrong format detection for 2-digit values
+
+### v5.3
+- **IR acceleration**: Holding the remote ramps up step size (0.5dB → 1.0dB → 2.0dB → 4.0dB → 8.0dB), matching the Touch's built-in IR acceleration
+- **Grid snapping**: Volume snapped to valid 0.5dB boundaries after acceleration math
+
+### v5.2
+- **Throttle**: 200ms minimum gap between Denon commands (max 5/sec) to prevent overwhelming the receiver
+
+### v5.1
+- **Initial fix**: Bypass sqrt curve for Touch with fixed output, step Denon volume directly in 0.5dB increments
+- **Fixed `int()` bug** in existing `handleVolChanges()` — was stripping Denon format via `int("085") = 85`
 ---
 
 ## Introduction

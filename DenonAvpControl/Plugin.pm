@@ -2399,14 +2399,22 @@ sub commandCallback {
 		if ( !$iPowerOnInProgress{$client} ) {
 			my $volAdjust = $request->getParam('_newvalue');
 
+			# Convert incremental +/- commands (from web UI buttons, SB3, etc.)
+			# to absolute values centered on 100 so they enter the Touch IR path
+			# instead of falling through to the sqrt curve (which maps 98-100 to near-max).
+			my $volAdjustChar1 = substr($volAdjust, 0, 1);
+			if ($volAdjustChar1 eq '+' || $volAdjustChar1 eq '-') {
+				$volAdjust = 100 + $volAdjust;
+			}
+
 			# Squeezebox Touch (fab4) with fixed output: volume is pinned at 100,
 			# IR remote sends absolute values near 100 (99/101 + acceleration).
-			# This is Touch-specific — SqueezePlay's Volume.lua only does this for
-			# model "fab4" (Bug 15826). Other players with fixed output don't send
-			# volume commands, and SB3/Transporter use incremental +/- commands.
+			# Web UI +/- buttons send incremental values converted to absolute above.
 			# Step AVR volume directly in 0.5dB increments, bypassing the sqrt curve
 			# which maps these near-100 values to near-max Denon volume.
-			if ( $volAdjust != 100 ) {
+			# Only intercept Touch IR range (84-116). Values outside this range
+			# (e.g. web UI slider 0-83) fall through to the original sqrt curve handler.
+			if ( $volAdjust >= 84 && $volAdjust <= 116 && $volAdjust != 100 ) {
 				my $zone = $curAvrZone{$client};
 				if ( $curAvrSource{$client} ne "" ) {
 					my $direction = ($volAdjust > 100) ? 1 : -1;
@@ -2414,7 +2422,8 @@ sub commandCallback {
 					# Throttle: max 5 commands/sec to the Marantz (200ms minimum gap).
 					my $elapsed = Time::HiRes::time() - ($gLastVolChange{$client} || 0);
 					if ($elapsed < 0.2) {
-						handleVolSet($client, 100, 1);
+						my $sbThrottle = calculateSBVolume($client, $curVolume{$client,$curAvrZone{$client}});
+						handleVolSet($client, $sbThrottle, 1);
 						return;
 					}
 
@@ -2472,8 +2481,11 @@ sub commandCallback {
 						$gLastVolChange{$client} = Time::HiRes::time();
 					}
 				}
-				# Reset player volume back to 100 to keep it centered
-				handleVolSet($client, 100, 1);
+				# Set player volume to reflect actual Denon volume on the web UI slider.
+				# Touch firmware keeps its internal volume pinned at 100 regardless of
+				# server state, so IR will still send values centered on 100.
+				my $sbMapped = calculateSBVolume($client, $curVolume{$client,$curAvrZone{$client}});
+				handleVolSet($client, $sbMapped, 1);
 				return;
 			}
 
@@ -3075,12 +3087,7 @@ sub updateSqueezeVol { #used to sync SB vol with AVP
 			my $volAdjust = calculateSBVolume($client, $avpVol);
 
 			if ($zone == $prefZone) {  # only if the primary zone
-				# Skip handleVolSet for fixed-output players (e.g. Touch) —
-				# changing the player volume from 100 breaks the Touch volume
-				# stepping patch, which relies on volume being pinned at 100.
-				if ( !$outputLevelFixed{$client} ) {
-					handleVolSet( $client, $volAdjust, 1);  # set client volume
-				}
+				handleVolSet( $client, $volAdjust, 1);  # set client volume
 			}
 		}
 	}
