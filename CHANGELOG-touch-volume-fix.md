@@ -104,18 +104,40 @@ Two bugs fixed that caused volume jumps when the Marantz volume was changed exte
 - The trailing `\r` made `length("59\r") = 3`, causing the patch to take the 3-digit path: `int("59") = 59` → treated as 5.9dB instead of 59.0dB → volume jumped from 59.0 to 6.5dB on next step.
 - **Fix**: Strip non-digit characters from `curVolume` before the length check: `$curRaw =~ s/[^0-9]//g;`
 
+#### v5.5: + web UI slider/buttons fix + slider reflects Denon volume
+
+Four issues fixed with LMS web interface interaction:
+
+**Bug 1 — Web UI slider drops volume on every click:**
+- The Touch IR intercept checked `$volAdjust != 100`, catching ALL volume values including web UI slider positions (e.g., 50). Any slider value < 100 → `direction = -1` (always down), `accel = abs(50 - 100) = 50` capped to 16 → 8dB drop per click regardless of slider position.
+- **Fix**: Restrict Touch IR intercept to range 84–116 only (`$volAdjust >= 84 && $volAdjust <= 116 && $volAdjust != 100`). Values outside this range (web UI slider 0–83) fall through to the original sqrt curve handler in `handleVolChanges`, which correctly maps slider position to Denon volume.
+
+**Bug 2 — Web UI +/- buttons hit sqrt curve at near-100:**
+- LMS web UI volume buttons send incremental commands (`"+2"`, `"-2"`). In Perl, `"+2" >= 84` evaluates as `2 >= 84` → false, so these bypassed the Touch IR block and fell through to the sqrt curve handler. With the player pinned at 100, `calculateAvrVolume(100)` → near-max Denon volume. Volume up = max, volume down mapped 98 to some high-ish value (e.g., 58.5dB).
+- **Fix**: Convert incremental values to absolute before the range check: `$volAdjust = 100 + $volAdjust` (Perl auto-converts `"+2"` to numeric 2). So `"+2"` → 102, `"-2"` → 98 — both in the 84–116 Touch IR range, correctly handled as 0.5dB steps.
+
+**Bug 3 — Slider stuck at 100%:**
+- After every Touch IR command, `handleVolSet($client, 100, 1)` reset the LMS player volume to 100. The web UI slider reflects the player volume, so it was permanently stuck at ~100%.
+- **Fix**: Instead of resetting to 100, set to `calculateSBVolume($client, $curVolume)` — the reverse-mapped Denon volume. Slider now shows the real receiver volume percentage (maxVol = 100%).
+- **Key discovery**: Touch firmware keeps its internal volume pinned at 100 regardless of what the server reports. IR always sends values centered on 100 (99/101 + acceleration), so changing the server-side volume doesn't break Touch IR stepping.
+
+**Bug 4 — Volume poll didn't update slider for fixed-output players:**
+- v5.4 had deliberately skipped `handleVolSet` in `updateSqueezeVol` for fixed-output players to keep them pinned at 100. This meant the 5-second volume poll couldn't update the slider to reflect Marantz knob/remote changes.
+- **Fix**: Re-enable `handleVolSet` in `updateSqueezeVol` for all players. Since we now set the mapped Denon value (not 100), this correctly syncs the slider with the Marantz every poll cycle without breaking Touch IR.
+
 ## Code Location
 
 Patch is in `commandCallback()` in `Plugin.pm`, inserted before the `volAdjust == 100` firmware bug guard. The patch:
 
-1. Detects fixed-output player + volume != 100
-2. Throttles (200ms gap)
-3. Calculates direction and acceleration from Touch val
-4. Normalizes curVolume to tenths-of-dB
-5. Steps with acceleration, snaps to grid, clamps to range
-6. Converts to Denon protocol format and sends directly via `SendNetAvpVol`
-7. Resets player volume to 100 via `handleVolSet($client, 100, 1)`
-8. Returns (no fall-through to existing absolute/incremental paths)
+1. Converts incremental +/- values to absolute (centered on 100)
+2. Detects fixed-output player + volume in Touch IR range (84–116, not 100)
+3. Throttles (200ms gap)
+4. Calculates direction and acceleration from Touch val
+5. Normalizes curVolume to tenths-of-dB
+6. Steps with acceleration, snaps to grid, clamps to range
+7. Converts to Denon protocol format and sends directly via `SendNetAvpVol`
+8. Sets player volume to `calculateSBVolume(curDenonVol)` for slider reflection
+9. Returns (no fall-through to existing absolute/incremental paths)
 
 Also fixed `int()` bug in existing `handleVolChanges()` function (line ~2613) — same format-stripping issue affected the SB3/web UI path at low volumes.
 
@@ -132,6 +154,7 @@ Plugin.pm.v51   # v5.1 (direct stepping, no throttle)
 Plugin.pm.v52   # v5.2 (+ throttle)
 Plugin.pm.v53   # v5.3 (+ acceleration + grid snap)
 Plugin.pm.v54   # v5.4 (+ poll sync fix + trailing CR fix)
+Plugin.pm.v55   # v5.5 (+ web UI slider/buttons fix + slider reflects Denon vol)
 ```
 
 ## Fork

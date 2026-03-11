@@ -35,6 +35,22 @@ https://github.com/SamInPgh/denonavpcontrol
 ### v5.1
 - **Initial fix**: Bypass sqrt curve for Touch with fixed output, step Denon volume directly in 0.5dB increments
 - **Fixed `int()` bug** in existing `handleVolChanges()` — was stripping Denon format via `int("085") = 85`
+
+### v4 (sqrt curve, abandoned)
+- Format-aware Denon value storage (strings instead of `int()` which stripped "085" → 85)
+- Loop to step SB until Denon value actually changes (handles sqrt flat spots)
+- Abandoned: sqrt curve gives non-uniform steps (6dB jump at bottom, 0.5dB at top)
+
+### v3 (intercept & convert, abandoned)
+- First working approach — intercept near-100 values, convert to incremental AVR steps via sqrt curve
+- Abandoned: `int()` format bug + sqrt flat spots + broken numeric Denon format comparison
+
+### v1–v2 (rate-limiting, failed)
+- Attempted to rate-limit volume commands by timestamp
+- Failed: Touch always sends 99/101 (delta 0–2), never exceeding any rate limit
+
+See [CHANGELOG-touch-volume-fix.md](CHANGELOG-touch-volume-fix.md) for full technical details.
+
 ---
 
 ## Introduction
