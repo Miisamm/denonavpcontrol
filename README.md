@@ -3,9 +3,18 @@
 
 # Squeezebox Touch Volume Fix (Fork)
 
+Claude AI:
+
 This fork fixes the Squeezebox Touch IR remote volume control maxing out Denon/Marantz receivers. With fixed output level enabled (required for this plugin), the Touch sends absolute volume values near 100, which the plugin's sqrt curve maps to near-max receiver volume. This fix bypasses the curve and sends direct 0.5dB steps to the AVR instead.
 
-Tested with Marantz Cinema 70s, Squeezebox Touch, and SB3 Classic. SB3 and other players are unaffected by this patch.
+Miisamm:
+
+Hi'yall, I always wanted that my squeezebox touch to Marantz Volume was controllable with the touch's remote, since I didn't find anything, and dabbled a bit with claude code, I thought,
+why not, lets try it. I have quite an understanding how the squeezeboxes work, the problem with the touch at 100% if locked, but have no real coding skills, a bit of DOS batch files from
+the olden Days, to write launchers for games, and boot menus. I also have a bit of understanding in html and js, nothing to brag about. 
+
+With the help of Claude Code, I managed to get SB Touch Volume to Denon Marantz working, I tested a lot and hope I can make at least somebody happy  with it.
+I tested with my Marantz Cinema 70s, Squeezebox Touch, and SB3 Classic. SB3 and other players should be unaffected by this patch I quickly tested with my SB3 and it worked properly.
 
 Big Thanks to @SamInPgh for the original plugin!
 
