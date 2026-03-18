@@ -7,7 +7,7 @@
       <category>hardware</category>
       <creator>Chris Couper, Sam Yahres</creator>
       <url>https://github.com/Miisamm/denonavpcontrol/releases/download/v5.5.0/DenonAvpControl.zip</url>
-      <sha>6ff225614845ed5dedf02496d792ba3932e60b4b</sha>
+      <sha>765ae2c01d1bd3ad418f4b0cc2e9bc6ba5f71681</sha>
       <desc lang="EN">Fork with Squeezebox Touch volume fix. Controls Denon/Marantz AVR volume directly in 0.5dB steps instead of using the sqrt curve that causes Touch IR to jump to max volume. Includes IR acceleration, web UI slider sync, and poll-based volume tracking.</desc>
       <link>https://github.com/Miisamm/denonavpcontrol</link>
     </plugin>
