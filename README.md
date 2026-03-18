@@ -22,6 +22,14 @@ https://github.com/SamInPgh/denonavpcontrol
 
 - Miisamm
 
+## Installation
+
+In LMS, go to **Settings → Plugins**, enter this URL under **Additional Repositories**:
+```
+https://raw.githubusercontent.com/Miisamm/denonavpcontrol/master/repo.xml
+```
+Restart LMS — the plugin appears as **Denon/Marantz AVR Control (Touch Volume Fix)** under the 3rd party plugins tab.
+
 ## Changelog
 
 ### v5.5
