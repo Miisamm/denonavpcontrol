@@ -29,6 +29,7 @@ In LMS, go to **Settings → Plugins**, enter this URL under **Additional Reposi
 https://raw.githubusercontent.com/Miisamm/denonavpcontrol/master/repo.xml
 ```
 Restart LMS — the plugin appears as **Denon/Marantz AVR Control (Touch Volume Fix)** under the 3rd party plugins tab.
+Hard reset the Squeezebox Touch, (pull the power cord), and fix the volume at 100% if not already done.
 
 ## Changelog
 
