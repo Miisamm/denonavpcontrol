@@ -239,6 +239,16 @@ PLUGIN_DENONAVPCONTROL_MAXVOL_DESC
 	DE	Wählen Sie die maximale Lautstärke aus, auf die das Plugin den AVR einstellen soll, wenn Lautstärkeanpassungen vorgenommen werden. Die 100 % Lautstärke am Player wird am AVR auf diesen Wert begrenzt.
 	NL	Selecteer het maximale volume waarop u wilt dat de plug-in de AVR instelt bij het maken van volumeaanpassingen. 100% volume op de speler is beperkt tot deze waarde op de AVR.
 
+PLUGIN_DENONAVPCONTROL_TOUCHSTEP
+	EN	Squeezebox Touch dB step width
+	DE	Squeezebox Touch dB-Schrittweite
+	NL	Squeezebox Touch dB-stapgrootte
+
+PLUGIN_DENONAVPCONTROL_TOUCHSTEP_DESC
+	EN	Only for Squeezebox Touch. Increases the step width for single button press dB values. The default is 0.5 dB.
+	DE	Nur für Squeezebox Touch. Erhöht die Schrittweite für einzelne Tastendrücke in dB. Der Standardwert ist 0,5 dB.
+	NL	Alleen voor Squeezebox Touch. Verhoogt de stapgrootte voor enkele knopdruk dB-waarden. De standaard is 0,5 dB.
+
 PLUGIN_DENONAVPCONTROL_AVP
 	EN	AVP/AVR Type
 	DE	AVP/AVR Art

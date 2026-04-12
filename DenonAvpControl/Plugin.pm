@@ -263,6 +263,7 @@ my %gRefreshCVTable;# Used to indicate if the channel volume table should be ref
 my %gLastVolChange; # Time of the last AVR volume change
 my %gDelayedVolChanges; # Number of consecutive delayed vol changes
 my %gLastAbsVol;        # Last accepted absolute volume per client (for rate-limiting Touch/iPeng)
+my %gIRActiveUntil;     # IR gate: timestamp until which acceleration values (84-116) are accepted
 
 # ----------------------------------------------------------------------------
 # References to other classes
@@ -2399,22 +2400,73 @@ sub commandCallback {
 		if ( !$iPowerOnInProgress{$client} ) {
 			my $volAdjust = $request->getParam('_newvalue');
 
-			# Convert incremental +/- commands (from web UI buttons, SB3, etc.)
-			# to absolute values centered on 100 so they enter the Touch IR path
-			# instead of falling through to the sqrt curve (which maps 98-100 to near-max).
+			# Incremental +/- commands (from web UI buttons, SB3, etc.)
+			# Step AVR volume directly in 0.5dB increments — the sqrt curve
+			# maps near-100 values to near-max Denon volume, so we bypass it.
 			my $volAdjustChar1 = substr($volAdjust, 0, 1);
 			if ($volAdjustChar1 eq '+' || $volAdjustChar1 eq '-') {
-				$volAdjust = 100 + $volAdjust;
+				my $zone = $curAvrZone{$client};
+				if ( $curAvrSource{$client} ne "" ) {
+					my $direction = ($volAdjustChar1 eq '+') ? 1 : -1;
+
+					my $cprefs_local = $prefs->client($client);
+					my $maxVol = $cprefs_local->get('maxVol');
+					my $avrType = $cprefs_local->get('pref_Avp');
+					my $touchStep = $cprefs_local->get('touchStep') || 5;
+					my $baseStep = ($zone == 0 && $avrType != 3) ? $touchStep : ($touchStep < 10 ? 10 : $touchStep);
+
+					my $curRaw = $curVolume{$client,$zone};
+					$curRaw =~ s/[^0-9]//g;
+					my $curTenthDb = (length($curRaw) >= 3) ? int($curRaw) : int($curRaw) * 10;
+
+					my $newTenthDb = $curTenthDb + ($baseStep * $direction);
+					if ($direction > 0) {
+						$newTenthDb = int(($newTenthDb + 4) / 5) * 5;
+					} else {
+						$newTenthDb = int($newTenthDb / 5) * 5;
+					}
+					my $maxTenthDb = (80 + $maxVol) * 10;
+					$newTenthDb = 0 if $newTenthDb < 0;
+					$newTenthDb = $maxTenthDb if $newTenthDb > $maxTenthDb;
+
+					my $newDenonVol;
+					if ($zone == 0 && $avrType != 3 && ($newTenthDb % 10) != 0) {
+						$newDenonVol = sprintf("%03d", $newTenthDb);
+					} else {
+						$newDenonVol = sprintf("%02d", $newTenthDb / 10);
+					}
+
+					if ($newTenthDb != $curTenthDb) {
+						$log->debug("Incr vol: dir=$direction curDenon=$curRaw newDenon=$newDenonVol\n");
+						$curVolume{$client,$zone} = $newDenonVol;
+						Plugins::DenonAvpControl::DenonAvpComms::SendNetAvpVol($client, $gIPAddress{$client}, $newDenonVol, $zone);
+						$gLastVolChange{$client} = Time::HiRes::time();
+					}
+				}
+				my $sbMapped = calculateSBVolume($client, $curVolume{$client,$curAvrZone{$client}});
+				handleVolSet($client, $sbMapped, 1);
+				return;
 			}
 
 			# Squeezebox Touch (fab4) with fixed output: volume is pinned at 100,
 			# IR remote sends absolute values near 100 (99/101 + acceleration).
-			# Web UI +/- buttons send incremental values converted to absolute above.
 			# Step AVR volume directly in 0.5dB increments, bypassing the sqrt curve
 			# which maps these near-100 values to near-max Denon volume.
-			# Only intercept Touch IR range (84-116). Values outside this range
-			# (e.g. web UI slider 0-83) fall through to the original sqrt curve handler.
-			if ( $volAdjust >= 84 && $volAdjust <= 116 && $volAdjust != 100 ) {
+			#
+			# IR gate: only 99 or 101 can START an IR sequence (unambiguous — no
+			# other source sends exactly these values). Subsequent acceleration
+			# values (98, 96, 92, 84) are accepted only if an IR command was
+			# handled within the last 500ms. Each handled command refreshes the
+			# gate, so holding the button never times out. Values from other
+			# sources (Spotify volume 0-100, web UI slider) fall through to the
+			# sqrt curve handler since they won't have a preceding 99/101.
+			my $isIRStart = ($volAdjust == 99 || $volAdjust == 101);
+			my $isIRAccel = (!$isIRStart && $volAdjust >= 84 && $volAdjust <= 116 && $volAdjust != 100
+			                 && ($gIRActiveUntil{$client} || 0) > Time::HiRes::time());
+			if ( $isIRStart || $isIRAccel ) {
+				# Refresh IR gate — keep it open while buttons are held (commands every ~100-200ms)
+				$gIRActiveUntil{$client} = Time::HiRes::time() + 0.5;
+
 				my $zone = $curAvrZone{$client};
 				if ( $curAvrSource{$client} ne "" ) {
 					my $direction = ($volAdjust > 100) ? 1 : -1;
@@ -2431,11 +2483,9 @@ sub commandCallback {
 					my $maxVol = $cprefs_local->get('maxVol');
 					my $avrType = $cprefs_local->get('pref_Avp');
 
-					# Use Touch IR acceleration as step multiplier:
-					# val=99/101 → 1×0.5dB, val=98/102 → 2×0.5dB, etc.
+					# Use Touch IR acceleration as step multiplier
 					my $accel = abs($volAdjust - 100);
 					$accel = 1 if $accel < 1;
-					$accel = 16 if $accel > 16;  # cap at 8dB per step
 
 					# Normalize curVolume to tenths-of-dB:
 					#   2-digit "06" (6.0dB) → 60,  "60" (60.0dB) → 600
@@ -2449,9 +2499,12 @@ sub commandCallback {
 						$curTenthDb = int($curRaw) * 10;
 					}
 
-					# Step: 0.5dB base (5 tenths) × acceleration
-					my $baseStep = ($zone == 0 && $avrType != 3) ? 5 : 10;
-					my $newTenthDb = $curTenthDb + ($baseStep * $accel * $direction);
+					# Step: configurable base (tenths-of-dB) × acceleration, capped at 4dB (40 tenths)
+					my $touchStep = $cprefs_local->get('touchStep') || 5;
+					my $baseStep = ($zone == 0 && $avrType != 3) ? $touchStep : ($touchStep < 10 ? 10 : $touchStep);
+					my $stepTenths = $baseStep * $accel;
+					$stepTenths = 40 if $stepTenths > 40;  # cap at 4dB per command
+					my $newTenthDb = $curTenthDb + ($stepTenths * $direction);
 
 					# Snap to nearest valid 0.5dB boundary (multiple of 5).
 					# Handles off-grid curVolume from Marantz feedback or init.
