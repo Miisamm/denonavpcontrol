@@ -125,6 +125,25 @@ Four issues fixed with LMS web interface interaction:
 - v5.4 had deliberately skipped `handleVolSet` in `updateSqueezeVol` for fixed-output players to keep them pinned at 100. This meant the 5-second volume poll couldn't update the slider to reflect Marantz knob/remote changes.
 - **Fix**: Re-enable `handleVolSet` in `updateSqueezeVol` for all players. Since we now set the mapped Denon value (not 100), this correctly syncs the slider with the Marantz every poll cycle without breaking Touch IR.
 
+#### v5.7: + IR gate + dedicated incremental handler + configurable touchStep
+
+Three changes to fix SanSpot/Spotify volume collision and improve stepping control:
+
+**Change 1 — IR gate (`%gIRActiveUntil`):**
+- Previously, any absolute value 84–116 was caught by the Touch IR intercept. This was a problem with SanSpot (Spotify Connect for Squeezebox): Spotify sends absolute volume 0–100 to LMS mixer, and values 84–100 were caught by the intercept, causing volume jumps.
+- **Fix**: Only values 99 or 101 can *start* an IR sequence (unambiguous — no other source sends exactly these). Subsequent acceleration values (98, 96, 92, 84) are only accepted if an IR command was handled within the last 500ms. Each handled command refreshes the gate, so holding the button never times out. Values from Spotify/slider fall through to the sqrt curve handler since they won't have a preceding 99/101.
+
+**Change 2 — Dedicated incremental handler:**
+- Previously, `+`/`-` commands were converted to absolute (`100 + val`) and routed through the Touch IR range check. This worked but conflated two different input sources in the same code path.
+- **Fix**: Incremental commands now have their own handler that steps AVR volume directly (same math as IR, without the gate logic). Cleaner separation of concerns.
+
+**Change 3 — Configurable `touchStep` setting:**
+- New per-client preference `touchStep` (values: 5, 10, 20 = 0.5, 1.0, 2.0 dB).
+- Dropdown added to plugin settings page (EN/DE/NL translations).
+- Used as base step for both IR and incremental handlers.
+- Acceleration cap reduced from `16 × 5 = 80 tenths = 8dB` to `40 tenths = 4dB` per command (acceleration × base capped at 40).
+- Default: 5 (0.5dB), matching previous behavior.
+
 ## Code Location
 
 Patch is in `commandCallback()` in `Plugin.pm`, inserted before the `volAdjust == 100` firmware bug guard. The patch:
@@ -155,6 +174,7 @@ Plugin.pm.v52   # v5.2 (+ throttle)
 Plugin.pm.v53   # v5.3 (+ acceleration + grid snap)
 Plugin.pm.v54   # v5.4 (+ poll sync fix + trailing CR fix)
 Plugin.pm.v55   # v5.5 (+ web UI slider/buttons fix + slider reflects Denon vol)
+Plugin.pm.v56   # v5.6 (pre-IR-gate baseline)
 ```
 
 ## Fork

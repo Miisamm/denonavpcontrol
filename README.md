@@ -33,6 +33,11 @@ Hard reset the Squeezebox Touch, (pull the power cord), and fix the volume at 10
 
 ## Changelog
 
+### v5.7
+- **IR gate**: Only 99/101 can start an IR sequence — acceleration values (84-116) require a preceding IR command within 500ms. Prevents Spotify volume (0-100) and web UI slider values from triggering the Touch IR intercept.
+- **Dedicated +/- handler**: Incremental commands (web UI buttons, SB3) now step AVR volume directly in 0.5dB increments via their own code path, instead of being converted to absolute and routed through the IR range check.
+- **Configurable Touch dB step width**: New per-player setting (0.5 / 1.0 / 2.0 dB) in plugin settings. Controls base step size for both IR remote and +/- buttons. Acceleration cap reduced from 8dB to 4dB per command.
+
 ### v5.5
 - **Web UI slider fix**: Slider clicks no longer drop volume — only Touch IR range (84-116) is intercepted, other values fall through to the original sqrt curve handler
 - **Web UI +/- buttons fix**: Incremental volume commands now step 0.5dB like IR instead of hitting the sqrt curve at near-100 values
