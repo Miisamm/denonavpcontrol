@@ -124,6 +124,9 @@ sub handler {
 	if ($prefs->client($client)->get('delayQuick') eq '') {
 		$prefs->client($client)->set('delayQuick', '1');
 	}
+	if ($prefs->client($client)->get('touchStep') eq '') {
+		$prefs->client($client)->set('touchStep', '5');
+	}
 
 	# When "Save" is pressed on the settings page, this function gets called.
 	if ($params->{'saveSettings'}) {
@@ -214,6 +217,9 @@ sub handler {
 			#save the maxVol in the client prefs
 			$prefs->client($client)->set('maxVol', "$maxVol");
 		}
+		if ($params->{'touchStep'} =~ /^\d/) { #save the Touch dB step width
+			$prefs->client($client)->set('touchStep', "$params->{'touchStep'}");
+		}
 		if ($params->{'powerPoll'} =~ /^-?\d/) { #save the power polling interval
 			my $powerPoll = $params->{'powerPoll'};
 			#save the power polling interval in the client prefs
@@ -264,6 +270,7 @@ sub handler {
 	$params->{'prefs'}->{'powerPoll'} = $prefs->client($client)->get('powerPoll');
 	$params->{'prefs'}->{'volPoll'} = $prefs->client($client)->get('volPoll');
 	$params->{'prefs'}->{'maxVol'} = $prefs->client($client)->get('maxVol');
+	$params->{'prefs'}->{'touchStep'} = $prefs->client($client)->get('touchStep') || '5';
 	# set the quick select setting on the web page
 	$params->{'prefs'}->{'quickSelect'} = $prefs->client($client)->get('quickSelect');
 	$params->{'prefs'}->{'zone'} = $prefs->client($client)->get('zone');

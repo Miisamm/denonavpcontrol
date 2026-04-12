@@ -134,6 +134,14 @@
 	               	</select>
 		[% END %]
 
+		[% WRAPPER settingGroup title="PLUGIN_DENONAVPCONTROL_TOUCHSTEP" desc="PLUGIN_DENONAVPCONTROL_TOUCHSTEP_DESC" %]
+        	       	<select name="[% pw.pref_prefix %]touchStep">
+                	       	<option value="5" [% IF prefs.touchStep == "5" %]selected[% END %]>0.5 dB</option>
+                        	<option value="10" [% IF prefs.touchStep == "10" %]selected[% END %]>1.0 dB</option>
+       	               	 	<option value="20" [% IF prefs.touchStep == "20" %]selected[% END %]>2.0 dB</option>
+	               	</select>
+		[% END %]
+
 		[% WRAPPER settingGroup title="PLUGIN_DENONAVPCONTROL_POWERSYNCH_ENABLED" desc="PLUGIN_DENONAVPCONTROL_POWERSYNCH_ENABLED_DESC" %]
 			<input name="pref_PowerSynch" id="powerSynch" type="checkbox" [% IF prefs.pref_PowerSynch %] checked [% END %] onchange='checkPowerSynch(this.checked);' >
 		[% END %]
