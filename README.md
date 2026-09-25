@@ -1,3 +1,7 @@
+# Sbtouch Volume control Plugin modification not needed anymore
+@SamInPgh informed me that the Community firmware for the SBTouch now fixes the Volume control for the SB Touch,
+So this plugin is not needed anymore
+
 # denonavpcontrol
 > A plugin for the Lyrion Music Server to control a Denon or Marantz Audio/Video Receiver.
 
